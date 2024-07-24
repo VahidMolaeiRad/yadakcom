@@ -1,4 +1,5 @@
-﻿using Domain.Entity;
+﻿using Application.CQRS.Query;
+using Domain.Entity;
 using Domain.Exceptions;
 using Domain.Interface;
 using Domain.Repository;
@@ -30,33 +31,43 @@ namespace Application.CQRS.Command
     {
         private readonly ICustomerRepository _customerRepository;
         private readonly IUnitOfWork _unitOfWork;
-        public EditCustomerHandler(ICustomerRepository customerRepository,IUnitOfWork unitOfWork)
+        private readonly IMediator mediator;
+
+        public EditCustomerHandler(ICustomerRepository customerRepository,IUnitOfWork unitOfWork, IMediator mediator)
         {
                 _customerRepository = customerRepository;
                 _unitOfWork = unitOfWork;
+            this.mediator = mediator;
         }
         public async Task<EditCustomerResponse> Handle(EditCustomer request, CancellationToken cancellationToken)
         {
             var customer = Customer.CreateNew(request.Id, request.FirstName, request.LastName,
                 request.DateOfBirth, request.PhoneNumber, request.Email, request.BankAccountNumber);
 
-            if (_customerRepository.GetByFirstNameAsync(request.FirstName).Result)
+            var checkDuplicatedCustomerResponse = new CheckDuplicatedCustomer()
+            {
+                FirstName = request.FirstName,
+                LastName = request.LastName,
+                DateOfBirth = request.DateOfBirth,
+                Email = request.Email
+            };
 
-                //throw new DuplicatesCustomerFirstNameException("FirstName is Esisting");
-                return null;
-            if (_customerRepository.GetByLastNameAsync(request.LastName).Result)
 
-                return null ;
+            var duplicated = await mediator.Send(checkDuplicatedCustomerResponse);
 
 
-            if (_customerRepository.GetByDateOfBirtrhAsync(request.DateOfBirth).Result)
+            if (duplicated.FirstName)
+                throw new DuplicatesCustomerFirstNameException("FirstName is Esisting");
 
-                return null;
+            if (duplicated.LastName)
+                throw new DuplicatesCustomerLastNameException("lastName is Existing");
 
-            if (_customerRepository.GetByEmailAsync(request.Email).Result)
+            if (duplicated.DateOfBirth)
+                throw new DuplicatesCustomerDateOfBirthException("DateOfBirth is existing");
 
-                //throw new DuplicatesCustomerEmailException("Email is exixting");
-                return null;
+            if (duplicated.Email)
+                throw new DuplicatesCustomerEmailException("Email Is Exixting");
+
 
             _customerRepository.Update(customer);
             await _unitOfWork.SaveChangesAsync();
